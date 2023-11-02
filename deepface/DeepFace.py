@@ -94,6 +94,7 @@ def verify(
     enforce_detection=True,
     align=True,
     normalization="base",
+    max_images=None,
 ):
     """
     This function verifies an image pair is same person or different persons. In the background,
@@ -122,6 +123,7 @@ def verify(
 
             normalization (string): normalize the input image before feeding to model
 
+            max_images (int, optional): max number of images per path. No limit by default.
     Returns:
             Verify function returns a dictionary.
 
@@ -153,6 +155,7 @@ def verify(
         grayscale=False,
         enforce_detection=enforce_detection,
         align=align,
+        max_images=max_images,
     )
 
     img2_objs = functions.extract_faces(
@@ -162,6 +165,7 @@ def verify(
         grayscale=False,
         enforce_detection=enforce_detection,
         align=align,
+        max_images=max_images,
     )
     # --------------------------------
     distances = []
@@ -191,12 +195,17 @@ def verify(
             img2_representation = img2_embedding_obj[0]["embedding"]
 
             if distance_metric == "cosine":
-                distance = dst.findCosineDistance(img1_representation, img2_representation)
+                distance = dst.findCosineDistance(
+                    img1_representation, img2_representation
+                )
             elif distance_metric == "euclidean":
-                distance = dst.findEuclideanDistance(img1_representation, img2_representation)
+                distance = dst.findEuclideanDistance(
+                    img1_representation, img2_representation
+                )
             elif distance_metric == "euclidean_l2":
                 distance = dst.findEuclideanDistance(
-                    dst.l2_normalize(img1_representation), dst.l2_normalize(img2_representation)
+                    dst.l2_normalize(img1_representation),
+                    dst.l2_normalize(img2_representation),
                 )
             else:
                 raise ValueError("Invalid distance_metric passed - ", distance_metric)
@@ -232,6 +241,7 @@ def analyze(
     detector_backend="opencv",
     align=True,
     silent=False,
+    max_images=None,
 ):
     """
     This function analyzes facial attributes including age, gender, emotion and race.
@@ -256,6 +266,8 @@ def analyze(
             align (boolean): alignment according to the eye positions.
 
             silent (boolean): disable (some) log messages
+
+            max_images (int, optional): max number of images per path. No limit by default.
 
     Returns:
             The function returns a list of dictionaries for each face appearing in the image.
@@ -334,6 +346,7 @@ def analyze(
         grayscale=False,
         enforce_detection=enforce_detection,
         align=align,
+        max_images=max_images,
     )
 
     for img_content, img_region, img_confidence in img_objs:
@@ -350,35 +363,49 @@ def analyze(
                     img_gray = cv2.resize(img_gray, (48, 48))
                     img_gray = np.expand_dims(img_gray, axis=0)
 
-                    emotion_predictions = models["emotion"].predict(img_gray, verbose=0)[0, :]
+                    emotion_predictions = models["emotion"].predict(
+                        img_gray, verbose=0
+                    )[0, :]
 
                     sum_of_predictions = emotion_predictions.sum()
 
                     obj["emotion"] = {}
 
                     for i, emotion_label in enumerate(Emotion.labels):
-                        emotion_prediction = 100 * emotion_predictions[i] / sum_of_predictions
+                        emotion_prediction = (
+                            100 * emotion_predictions[i] / sum_of_predictions
+                        )
                         obj["emotion"][emotion_label] = emotion_prediction
 
-                    obj["dominant_emotion"] = Emotion.labels[np.argmax(emotion_predictions)]
+                    obj["dominant_emotion"] = Emotion.labels[
+                        np.argmax(emotion_predictions)
+                    ]
 
                 elif action == "age":
-                    age_predictions = models["age"].predict(img_content, verbose=0)[0, :]
+                    age_predictions = models["age"].predict(img_content, verbose=0)[
+                        0, :
+                    ]
                     apparent_age = Age.findApparentAge(age_predictions)
                     # int cast is for exception - object of type 'float32' is not JSON serializable
                     obj["age"] = int(apparent_age)
 
                 elif action == "gender":
-                    gender_predictions = models["gender"].predict(img_content, verbose=0)[0, :]
+                    gender_predictions = models["gender"].predict(
+                        img_content, verbose=0
+                    )[0, :]
                     obj["gender"] = {}
                     for i, gender_label in enumerate(Gender.labels):
                         gender_prediction = 100 * gender_predictions[i]
                         obj["gender"][gender_label] = gender_prediction
 
-                    obj["dominant_gender"] = Gender.labels[np.argmax(gender_predictions)]
+                    obj["dominant_gender"] = Gender.labels[
+                        np.argmax(gender_predictions)
+                    ]
 
                 elif action == "race":
-                    race_predictions = models["race"].predict(img_content, verbose=0)[0, :]
+                    race_predictions = models["race"].predict(img_content, verbose=0)[
+                        0, :
+                    ]
                     sum_of_predictions = race_predictions.sum()
 
                     obj["race"] = {}
@@ -409,6 +436,7 @@ def find(
     align=True,
     normalization="base",
     silent=False,
+    max_images=None,
 ):
     """
     This function applies verification several times and find the identities in a database
@@ -440,6 +468,8 @@ def find(
 
             silent (boolean): disable some logging and progress bars
 
+            max_images (int, optional): max number of images per path. No limit by default.
+
     Returns:
             This function returns list of pandas data frame. Each item of the list corresponding to
             an identity in the img_path.
@@ -459,7 +489,6 @@ def find(
     file_name = file_name.replace("-", "_").lower()
 
     if path.exists(db_path + "/" + file_name):
-
         if not silent:
             print(
                 f"WARNING: Representations for images in {db_path} folder were previously stored"
@@ -471,7 +500,12 @@ def find(
             representations = pickle.load(f)
 
         if not silent:
-            print("There are ", len(representations), " representations found in ", file_name)
+            print(
+                "There are ",
+                len(representations),
+                " representations found in ",
+                file_name,
+            )
 
     else:  # create representation.pkl from scratch
         employees = []
@@ -514,6 +548,7 @@ def find(
                 grayscale=False,
                 enforce_detection=enforce_detection,
                 align=align,
+                max_images=max_images,
             )
 
             for img_content, _, _ in img_objs:
@@ -546,7 +581,9 @@ def find(
 
     # ----------------------------
     # now, we got representations for facial database
-    df = pd.DataFrame(representations, columns=["identity", f"{model_name}_representation"])
+    df = pd.DataFrame(
+        representations, columns=["identity", f"{model_name}_representation"]
+    )
 
     # img path might have more than once face
     target_objs = functions.extract_faces(
@@ -583,9 +620,13 @@ def find(
             source_representation = instance[f"{model_name}_representation"]
 
             if distance_metric == "cosine":
-                distance = dst.findCosineDistance(source_representation, target_representation)
+                distance = dst.findCosineDistance(
+                    source_representation, target_representation
+                )
             elif distance_metric == "euclidean":
-                distance = dst.findEuclideanDistance(source_representation, target_representation)
+                distance = dst.findEuclideanDistance(
+                    source_representation, target_representation
+                )
             elif distance_metric == "euclidean_l2":
                 distance = dst.findEuclideanDistance(
                     dst.l2_normalize(source_representation),
@@ -746,7 +787,8 @@ def stream(
 
     if time_threshold < 1:
         raise ValueError(
-            "time_threshold must be greater than the value 1 but you passed " + str(time_threshold)
+            "time_threshold must be greater than the value 1 but you passed "
+            + str(time_threshold)
         )
 
     if frame_threshold < 1:
@@ -774,6 +816,7 @@ def extract_faces(
     enforce_detection=True,
     align=True,
     grayscale=False,
+    max_images=None,
 ):
     """
     This function applies pre-processing stages of a face recognition pipeline
@@ -798,6 +841,8 @@ def extract_faces(
 
             grayscale (boolean): extracting faces in rgb or gray scale
 
+            max_images (int, optional): max number of images per path. No limit by default.
+
     Returns:
             list of dictionaries. Each dictionary will have facial image itself,
             extracted area from the original image and confidence score.
@@ -812,6 +857,7 @@ def extract_faces(
         grayscale=grayscale,
         enforce_detection=enforce_detection,
         align=align,
+        max_images=max_images,
     )
 
     for img, region, confidence in img_objs:
@@ -833,9 +879,15 @@ def extract_faces(
 # deprecated functions
 
 
-@deprecated(version="0.0.78", reason="Use DeepFace.extract_faces instead of DeepFace.detectFace")
+@deprecated(
+    version="0.0.78", reason="Use DeepFace.extract_faces instead of DeepFace.detectFace"
+)
 def detectFace(
-    img_path, target_size=(224, 224), detector_backend="opencv", enforce_detection=True, align=True
+    img_path,
+    target_size=(224, 224),
+    detector_backend="opencv",
+    enforce_detection=True,
+    align=True,
 ):
     """
     Deprecated function. Use extract_faces for same functionality.

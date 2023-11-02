@@ -97,9 +97,9 @@ def load_image(img):
 
     # The image is a url
     if img.startswith("http"):
-        return np.array(Image.open(requests.get(img, stream=True, timeout=60).raw).convert("RGB"))[
-            :, :, ::-1
-        ]
+        return np.array(
+            Image.open(requests.get(img, stream=True, timeout=60).raw).convert("RGB")
+        )[:, :, ::-1]
 
     # The image is a path
     if os.path.isfile(img) is not True:
@@ -115,6 +115,7 @@ def load_image(img):
     # This causes troubles when reading files with non english names
     # return cv2.imread(img)
 
+
 # --------------------------------------------------
 
 
@@ -125,6 +126,7 @@ def extract_faces(
     grayscale=False,
     enforce_detection=True,
     align=True,
+    max_images=None,
 ):
     """Extract faces from an image.
 
@@ -137,6 +139,8 @@ def extract_faces(
         Defaults to False.
         enforce_detection (bool, optional): whether to enforce face detection. Defaults to True.
         align (bool, optional): whether to align the extracted faces. Defaults to True.
+        max_images (int, optional): whether you want to extract a maximum number of images.
+        If provided, the n biggest images will be returned. No filter by default.
 
     Raises:
         ValueError: if face could not be detected and enforce_detection is True.
@@ -156,7 +160,9 @@ def extract_faces(
         face_objs = [(img, img_region, 0)]
     else:
         face_detector = FaceDetector.build_model(detector_backend)
-        face_objs = FaceDetector.detect_faces(face_detector, detector_backend, img, align)
+        face_objs = FaceDetector.detect_faces(
+            face_detector, detector_backend, img, align
+        )
 
     # in case of no face found
     if len(face_objs) == 0 and enforce_detection is True:
@@ -167,6 +173,11 @@ def extract_faces(
 
     if len(face_objs) == 0 and enforce_detection is False:
         face_objs = [(img, img_region, 0)]
+
+    if max_images:
+        face_objs = sorted(face_objs, key=lambda x: x[1][2] * x[1][2], reverse=True)[
+            :max_images
+        ]
 
     for current_img, current_region, confidence in face_objs:
         if current_img.shape[0] > 0 and current_img.shape[1] > 0:
